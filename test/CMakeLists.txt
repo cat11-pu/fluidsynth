@@ -40,6 +40,7 @@ ADD_FLUID_TEST(test_seq_event_queue_sort)
 ADD_FLUID_TEST(test_seq_scale)
 ADD_FLUID_TEST(test_seq_evt_order)
 ADD_FLUID_TEST(test_midi_parser_realtime)
+ADD_FLUID_TEST(test_malformed_midi_properties)
 ADD_FLUID_TEST(test_midi_router)
 ADD_FLUID_TEST(test_midi_file_tempo)
 ADD_FLUID_TEST(test_seq_event_queue_remove)
@@ -64,6 +65,11 @@ ADD_FLUID_TEST(test_basic_channel)
 ADD_FLUID_TEST(test_rvoice_mixer LINK_AS_ARCHIVE)
 ADD_FLUID_TEST(test_rvoice_dsp_interpolate)
 ADD_FLUID_TEST(test_iir_coefficient_reuse)
+
+set_tests_properties(test_malformed_midi_properties PROPERTIES
+    TIMEOUT 600
+    ENVIRONMENT "ASAN_OPTIONS=detect_leaks=1:abort_on_error=1:exitcode=97;LSAN_OPTIONS=exitcode=98;UBSAN_OPTIONS=halt_on_error=1:abort_on_error=1:print_stacktrace=1"
+)
 
 if ( NOT OSAL STREQUAL "embedded" )
     ADD_FLUID_TEST(test_threading)
