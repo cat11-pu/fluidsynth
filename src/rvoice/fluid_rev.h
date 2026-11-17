@@ -23,7 +23,12 @@
 
 #include "fluidsynth_priv.h"
 
+#ifdef __cplusplus
+#include <vector>
+#endif
+
 typedef struct _fluid_revmodel_t fluid_revmodel_t;
+typedef struct _fluid_revmodel_state_t fluid_revmodel_state_t;
 
 #ifdef __cplusplus
 struct _fluid_revmodel_t
@@ -34,6 +39,8 @@ struct _fluid_revmodel_t
     virtual void reset() = 0;
     virtual void set(int set, fluid_real_t roomsize, fluid_real_t damping, fluid_real_t width, fluid_real_t level) = 0;
     virtual int samplerate_change(fluid_real_t sample_rate) = 0;
+    virtual bool save_state(std::vector<unsigned char> &data) const = 0;
+    virtual bool restore_state(const std::vector<unsigned char> &data) = 0;
 };
 
 extern "C" {
@@ -100,6 +107,11 @@ new_fluid_revmodel(fluid_real_t sample_rate_max, fluid_real_t sample_rate,
                    int reverb_type);
 
 void delete_fluid_revmodel(fluid_revmodel_t *rev);
+
+fluid_revmodel_state_t *fluid_revmodel_state_save(const fluid_revmodel_t *rev);
+int fluid_revmodel_state_restore(fluid_revmodel_t *rev,
+                                 const fluid_revmodel_state_t *state);
+void fluid_revmodel_state_free(fluid_revmodel_state_t *state);
 
 void fluid_revmodel_processmix(fluid_revmodel_t *rev, const fluid_real_t *in,
                                fluid_real_t *left_out, fluid_real_t *right_out);

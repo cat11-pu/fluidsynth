@@ -57,6 +57,7 @@ typedef struct _fluid_sequencer_t fluid_sequencer_t;            /**< Sequencer i
 typedef struct _fluid_cmd_handler_t fluid_cmd_handler_t;        /**< Shell Command Handler */
 typedef struct _fluid_ladspa_fx_t fluid_ladspa_fx_t;            /**< LADSPA effects instance */
 typedef struct _fluid_file_callbacks_t fluid_file_callbacks_t;  /**< Callback struct to perform custom file loading of soundfonts */
+typedef struct _fluid_synth_snapshot_t fluid_synth_snapshot_t;  /**< Opaque synthesizer state snapshot */
 
 typedef int fluid_istream_t;    /**< Input stream descriptor */
 typedef int fluid_ostream_t;    /**< Output stream descriptor */

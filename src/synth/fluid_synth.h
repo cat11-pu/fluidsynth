@@ -263,6 +263,7 @@ fluid_synth_write_float_channels(fluid_synth_t *synth, int len,
 
 int fluid_synth_render_blocks(fluid_synth_t *synth, int blockcount);
 unsigned int fluid_synth_get_ticks(fluid_synth_t *synth);
+void fluid_synth_check_finished_voices(fluid_synth_t *synth);
 
 fluid_preset_t *fluid_synth_find_preset(fluid_synth_t *synth,
                                         int banknum,

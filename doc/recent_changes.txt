@@ -2,6 +2,7 @@
 
 \page RecentChanges Recent Changes
 \section NewIn2_6_0 What's new in 2.6.0?
+- Sample-accurate synthesis state snapshots and seeking have been added, see fluid_synth_snapshot_save(), fluid_synth_snapshot_restore() and fluid_synth_snapshot_get_position()
 - A lookahead limiter has been added, see \setting{synth_limiter_active} and other related limiter settings
 - Support for 24bit and 32bit audio has been added, see fluid_synth_write_s24() and fluid_synth_write_s32()
 - Added fluid_voice_set_callback() for voice lifecycle notifications

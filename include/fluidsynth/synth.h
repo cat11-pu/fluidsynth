@@ -387,6 +387,83 @@ FLUIDSYNTH_API int fluid_synth_process(fluid_synth_t *synth, int len,
                                        int nout, float *out[]);
 /** @} Audio Rendering */
 
+/**
+ * @defgroup state_snapshot State Snapshot and Seek
+ * @ingroup synth
+ *
+ * Save the complete synthesis state at a sample-accurate position and restore
+ * it later without replaying MIDI history.
+ *
+ * A snapshot covers the pending mixer buffers, channel controllers and
+ * generators, voice envelopes/LFOs/filter history/sample phase, voice
+ * allocation order, and the internal reverb and chorus state. Restoring a
+ * snapshot is therefore a seek to the captured output frame. Rendering from a
+ * restored snapshot produces the same samples as uninterrupted rendering,
+ * including the currently active envelopes, controllers and effect tails.
+ *
+ * @par Constraints
+ * - Save and restore must run on the synthesis thread while rendering is
+ *   stopped. Queued synthesis events are committed before saving.
+ * - A snapshot belongs to the synth instance that created it. It may be
+ *   restored repeatedly into that instance, including after other playback.
+ *   Release all snapshots before deleting that synth instance.
+ * - The synth configuration and loaded SoundFonts must not change while a
+ *   snapshot is used. The snapshot does not serialize LADSPA graphs, the
+ *   optional external limiter, multi-threaded mixers, or the Signalsmith
+ *   reverb engine; saving fails while any of them is active.
+ *
+ * @{
+ */
+
+/**
+ * Save the complete synthesis state at the current output frame.
+ *
+ * The snapshot position is the number of audio frames already emitted. Any
+ * queued synthesis events are committed first, so the snapshot represents the
+ * state that will produce the next output frame.
+ *
+ * @param synth Synthesizer instance
+ * @param snapshot Location to store the new snapshot
+ * @return #FLUID_OK on success, #FLUID_FAILED otherwise
+ *
+ * @note The caller owns the returned snapshot and must release it with
+ * fluid_synth_snapshot_free().
+ */
+FLUIDSYNTH_API int fluid_synth_snapshot_save(fluid_synth_t *synth,
+        fluid_synth_snapshot_t **snapshot);
+
+/**
+ * Seek to a saved output frame by restoring its complete synthesis state.
+ *
+ * The snapshot remains valid after restoring and may be restored repeatedly.
+ * Restoring does not replay MIDI history: only the captured state is restored.
+ *
+ * @param synth Synthesizer instance that created the snapshot
+ * @param snapshot Snapshot to restore
+ * @return #FLUID_OK on success, #FLUID_FAILED if the instance or configuration
+ * does not match
+ */
+FLUIDSYNTH_API int fluid_synth_snapshot_restore(fluid_synth_t *synth,
+        const fluid_synth_snapshot_t *snapshot);
+
+/**
+ * Release a synthesis state snapshot.
+ *
+ * @param snapshot Snapshot to release, may be NULL
+ */
+FLUIDSYNTH_API void fluid_synth_snapshot_free(fluid_synth_snapshot_t *snapshot);
+
+/**
+ * Get the output frame captured by a snapshot.
+ *
+ * @param snapshot Snapshot to query
+ * @return Number of audio frames emitted before the snapshot, or -1 if
+ * \p snapshot is NULL
+ */
+FLUIDSYNTH_API fluid_long_long_t fluid_synth_snapshot_get_position(
+    const fluid_synth_snapshot_t *snapshot);
+/** @} State Snapshot and Seek */
+
 
 /**
  * @defgroup iir_filter Effect - IIR Filter

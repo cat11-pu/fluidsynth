@@ -5098,7 +5098,7 @@ int fluid_synth_write_s32_channels(fluid_synth_t *synth, int len,
                                               channels_incr);
 }
 
-static void
+void
 fluid_synth_check_finished_voices(fluid_synth_t *synth)
 {
     int j;

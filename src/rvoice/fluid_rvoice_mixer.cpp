@@ -129,6 +129,42 @@ struct _fluid_rvoice_mixer_t
 #endif
 };
 
+typedef struct
+{
+    int voice_index;
+    unsigned char use_overflow_rvoice;
+} fluid_mixer_voice_state_t;
+
+typedef struct
+{
+    int reverb_on;
+    int chorus_on;
+    double reverb_param[FLUID_REVERB_PARAM_LAST];
+    double chorus_param[FLUID_CHORUS_PARAM_LAST];
+    fluid_revmodel_state_t *reverb;
+    fluid_chorus_state_t *chorus;
+} fluid_mixer_fx_state_t;
+
+struct _fluid_rvoice_mixer_state_t
+{
+    int buf_count;
+    int fx_buf_count;
+    int fx_units;
+    int sample_count;
+    int active_voices;
+    int with_reverb;
+    int with_chorus;
+    int mix_fx_to_out;
+
+    fluid_real_t *left_buf;
+    fluid_real_t *right_buf;
+    fluid_real_t *fx_left_buf;
+    fluid_real_t *fx_right_buf;
+
+    fluid_mixer_voice_state_t *voices;
+    fluid_mixer_fx_state_t *fx;
+};
+
 #if ENABLE_MIXER_THREADS
 static void delete_rvoice_mixer_threads(fluid_rvoice_mixer_t *mixer);
 static int fluid_rvoice_mixer_set_threads(fluid_rvoice_mixer_t *mixer, int thread_count, int prio_level);
@@ -976,6 +1012,281 @@ void delete_fluid_rvoice_mixer(fluid_rvoice_mixer_t *mixer)
     FLUID_FREE(mixer->fx);
     FLUID_FREE(mixer->rvoices);
     delete mixer;
+}
+
+static void
+fluid_rvoice_mixer_state_clear(fluid_rvoice_mixer_state_t *state)
+{
+    int i;
+
+    if(state == NULL)
+    {
+        return;
+    }
+
+    if(state->fx != NULL)
+    {
+        for(i = 0; i < state->fx_units; ++i)
+        {
+            fluid_revmodel_state_free(state->fx[i].reverb);
+            fluid_chorus_state_free(state->fx[i].chorus);
+        }
+    }
+
+    FLUID_FREE(state->fx);
+    FLUID_FREE(state->voices);
+    FLUID_FREE(state->left_buf);
+    FLUID_FREE(state->right_buf);
+    FLUID_FREE(state->fx_left_buf);
+    FLUID_FREE(state->fx_right_buf);
+    FLUID_FREE(state);
+}
+
+fluid_rvoice_mixer_state_t *
+fluid_rvoice_mixer_state_save(fluid_rvoice_mixer_t *mixer,
+                              fluid_voice_t *voices[], int nvoice)
+{
+    fluid_rvoice_mixer_state_t *state;
+    int i;
+
+    fluid_return_val_if_fail(mixer != NULL, NULL);
+    fluid_return_val_if_fail(voices != NULL, NULL);
+    fluid_return_val_if_fail(nvoice >= 0, NULL);
+
+#ifdef LADSPA
+    if(mixer->ladspa_fx != NULL)
+    {
+        FLUID_LOG(FLUID_ERR, "Cannot snapshot an active LADSPA graph");
+        return NULL;
+    }
+#endif
+
+#ifdef SIGNALSMITH_SUPPORT
+    if(mixer->limiter != NULL)
+    {
+        FLUID_LOG(FLUID_ERR, "Cannot snapshot an active limiter");
+        return NULL;
+    }
+#endif
+
+#if ENABLE_MIXER_THREADS
+    if(mixer->thread_count > 0)
+    {
+        FLUID_LOG(FLUID_ERR, "Cannot snapshot a multi-threaded mixer");
+        return NULL;
+    }
+#endif
+
+    state = FLUID_NEW(fluid_rvoice_mixer_state_t);
+
+    if(state == NULL)
+    {
+        return NULL;
+    }
+
+    FLUID_MEMSET(state, 0, sizeof(*state));
+    state->buf_count = mixer->buffers.buf_count;
+    state->fx_buf_count = mixer->buffers.fx_buf_count;
+    state->sample_count = FLUID_BUFSIZE * FLUID_MIXER_MAX_BUFFERS_DEFAULT;
+    state->fx_units = mixer->fx_units;
+    state->active_voices = mixer->active_voices;
+    state->with_reverb = mixer->with_reverb;
+    state->with_chorus = mixer->with_chorus;
+    state->mix_fx_to_out = mixer->mix_fx_to_out;
+
+    state->left_buf = FLUID_ARRAY(fluid_real_t,
+                                  state->buf_count * state->sample_count);
+    state->right_buf = FLUID_ARRAY(fluid_real_t,
+                                   state->buf_count * state->sample_count);
+    state->fx_left_buf = FLUID_ARRAY(fluid_real_t,
+                                     state->fx_buf_count * state->sample_count);
+    state->fx_right_buf = FLUID_ARRAY(fluid_real_t,
+                                      state->fx_buf_count * state->sample_count);
+    state->voices = FLUID_ARRAY(fluid_mixer_voice_state_t,
+                                mixer->polyphony);
+    state->fx = FLUID_ARRAY(fluid_mixer_fx_state_t, state->fx_units);
+
+    if(state->left_buf == NULL || state->right_buf == NULL
+       || state->fx_left_buf == NULL || state->fx_right_buf == NULL
+       || state->voices == NULL || state->fx == NULL)
+    {
+        fluid_rvoice_mixer_state_clear(state);
+        return NULL;
+    }
+
+    FLUID_MEMSET(state->fx, 0,
+                 state->fx_units * sizeof(*state->fx));
+    FLUID_MEMCPY(state->left_buf, fluid_align_ptr(mixer->buffers.left_buf,
+                 FLUID_DEFAULT_ALIGNMENT),
+                 state->buf_count * state->sample_count * sizeof(fluid_real_t));
+    FLUID_MEMCPY(state->right_buf, fluid_align_ptr(mixer->buffers.right_buf,
+                 FLUID_DEFAULT_ALIGNMENT),
+                 state->buf_count * state->sample_count * sizeof(fluid_real_t));
+    FLUID_MEMCPY(state->fx_left_buf, fluid_align_ptr(mixer->buffers.fx_left_buf,
+                 FLUID_DEFAULT_ALIGNMENT),
+                 state->fx_buf_count * state->sample_count * sizeof(fluid_real_t));
+    FLUID_MEMCPY(state->fx_right_buf, fluid_align_ptr(mixer->buffers.fx_right_buf,
+                 FLUID_DEFAULT_ALIGNMENT),
+                 state->fx_buf_count * state->sample_count * sizeof(fluid_real_t));
+
+    for(i = 0; i < mixer->active_voices; ++i)
+    {
+        fluid_rvoice_t *rvoice = mixer->rvoices[i];
+        int j;
+
+        for(j = 0; j < nvoice; ++j)
+        {
+            if(voices[j]->rvoice == rvoice)
+            {
+                state->voices[i].voice_index = j;
+                state->voices[i].use_overflow_rvoice = 0;
+                break;
+            }
+
+            if(voices[j]->overflow_rvoice == rvoice)
+            {
+                state->voices[i].voice_index = j;
+                state->voices[i].use_overflow_rvoice = 1;
+                break;
+            }
+        }
+
+        if(j == nvoice)
+        {
+            FLUID_LOG(FLUID_ERR, "Cannot snapshot mixer with an unknown voice");
+            fluid_rvoice_mixer_state_clear(state);
+            return NULL;
+        }
+    }
+
+    for(i = 0; i < state->fx_units; ++i)
+    {
+        int param;
+
+        state->fx[i].reverb_on = mixer->fx[i].reverb_on;
+        state->fx[i].chorus_on = mixer->fx[i].chorus_on;
+
+        for(param = 0; param < FLUID_REVERB_PARAM_LAST; ++param)
+        {
+            state->fx[i].reverb_param[param] = mixer->fx[i].reverb_param[param];
+        }
+
+        for(param = 0; param < FLUID_CHORUS_PARAM_LAST; ++param)
+        {
+            state->fx[i].chorus_param[param] = mixer->fx[i].chorus_param[param];
+        }
+
+        state->fx[i].reverb = fluid_revmodel_state_save(mixer->fx[i].reverb);
+        state->fx[i].chorus = fluid_chorus_state_save(mixer->fx[i].chorus);
+
+        if(state->fx[i].reverb == NULL || state->fx[i].chorus == NULL)
+        {
+            fluid_rvoice_mixer_state_clear(state);
+            return NULL;
+        }
+    }
+
+    return state;
+}
+
+int
+fluid_rvoice_mixer_state_restore(fluid_rvoice_mixer_t *mixer,
+                                 const fluid_rvoice_mixer_state_t *state,
+                                 fluid_voice_t *voices[], int nvoice)
+{
+    int i;
+
+    fluid_return_val_if_fail(mixer != NULL, FLUID_FAILED);
+    fluid_return_val_if_fail(state != NULL, FLUID_FAILED);
+    fluid_return_val_if_fail(voices != NULL, FLUID_FAILED);
+
+    if(state->buf_count != mixer->buffers.buf_count
+       || state->fx_buf_count != mixer->buffers.fx_buf_count
+       || state->fx_units != mixer->fx_units
+       || state->active_voices > mixer->polyphony
+       || state->sample_count != FLUID_BUFSIZE * FLUID_MIXER_MAX_BUFFERS_DEFAULT)
+    {
+        return FLUID_FAILED;
+    }
+
+    for(i = 0; i < state->active_voices; ++i)
+    {
+        const fluid_mixer_voice_state_t *voice_state = &state->voices[i];
+
+        if(voice_state->voice_index < 0 || voice_state->voice_index >= nvoice)
+        {
+            return FLUID_FAILED;
+        }
+    }
+
+    for(i = 0; i < state->fx_units; ++i)
+    {
+        if(state->fx[i].reverb == NULL || state->fx[i].chorus == NULL)
+        {
+            return FLUID_FAILED;
+        }
+    }
+
+    FLUID_MEMCPY(fluid_align_ptr(mixer->buffers.left_buf, FLUID_DEFAULT_ALIGNMENT),
+                 state->left_buf,
+                 state->buf_count * state->sample_count * sizeof(fluid_real_t));
+    FLUID_MEMCPY(fluid_align_ptr(mixer->buffers.right_buf, FLUID_DEFAULT_ALIGNMENT),
+                 state->right_buf,
+                 state->buf_count * state->sample_count * sizeof(fluid_real_t));
+    FLUID_MEMCPY(fluid_align_ptr(mixer->buffers.fx_left_buf, FLUID_DEFAULT_ALIGNMENT),
+                 state->fx_left_buf,
+                 state->fx_buf_count * state->sample_count * sizeof(fluid_real_t));
+    FLUID_MEMCPY(fluid_align_ptr(mixer->buffers.fx_right_buf, FLUID_DEFAULT_ALIGNMENT),
+                 state->fx_right_buf,
+                 state->fx_buf_count * state->sample_count * sizeof(fluid_real_t));
+
+    mixer->active_voices = state->active_voices;
+    mixer->with_reverb = state->with_reverb;
+    mixer->with_chorus = state->with_chorus;
+    mixer->mix_fx_to_out = state->mix_fx_to_out;
+
+    for(i = 0; i < state->active_voices; ++i)
+    {
+        fluid_voice_t *voice = voices[state->voices[i].voice_index];
+        mixer->rvoices[i] = state->voices[i].use_overflow_rvoice
+                            ? voice->overflow_rvoice : voice->rvoice;
+    }
+
+    mixer->buffers.finished_voice_count = 0;
+
+    for(i = 0; i < state->fx_units; ++i)
+    {
+        int param;
+
+        mixer->fx[i].reverb_on = state->fx[i].reverb_on;
+        mixer->fx[i].chorus_on = state->fx[i].chorus_on;
+
+        for(param = 0; param < FLUID_REVERB_PARAM_LAST; ++param)
+        {
+            mixer->fx[i].reverb_param[param] = state->fx[i].reverb_param[param];
+        }
+
+        for(param = 0; param < FLUID_CHORUS_PARAM_LAST; ++param)
+        {
+            mixer->fx[i].chorus_param[param] = state->fx[i].chorus_param[param];
+        }
+
+        if(fluid_revmodel_state_restore(mixer->fx[i].reverb,
+                                        state->fx[i].reverb) != FLUID_OK
+           || fluid_chorus_state_restore(mixer->fx[i].chorus,
+                                         state->fx[i].chorus) != FLUID_OK)
+        {
+            return FLUID_FAILED;
+        }
+    }
+
+    return FLUID_OK;
+}
+
+void
+fluid_rvoice_mixer_state_free(fluid_rvoice_mixer_state_t *state)
+{
+    fluid_rvoice_mixer_state_clear(state);
 }
 
 #ifdef LADSPA

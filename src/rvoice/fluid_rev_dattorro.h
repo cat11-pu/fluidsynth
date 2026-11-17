@@ -93,6 +93,8 @@ struct fluid_revmodel_dattorro : public _fluid_revmodel_t
     void set(int set, fluid_real_t roomsize, fluid_real_t damping,
              fluid_real_t width, fluid_real_t level) override;
     int samplerate_change(fluid_real_t sample_rate) override;
+    bool save_state(std::vector<unsigned char> &data) const override;
+    bool restore_state(const std::vector<unsigned char> &data) override;
 
 private:
     void setup();

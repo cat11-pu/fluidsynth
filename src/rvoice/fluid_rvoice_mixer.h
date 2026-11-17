@@ -31,6 +31,7 @@ extern "C" {
 #endif
 
 typedef struct _fluid_rvoice_mixer_t fluid_rvoice_mixer_t;
+typedef struct _fluid_rvoice_mixer_state_t fluid_rvoice_mixer_state_t;
 
 int fluid_rvoice_mixer_render(fluid_rvoice_mixer_t *mixer, int blockcount);
 int fluid_rvoice_mixer_get_bufs(fluid_rvoice_mixer_t *mixer,
@@ -46,6 +47,13 @@ fluid_rvoice_mixer_t *new_fluid_rvoice_mixer(int buf_count, int fx_buf_count, in
         int reverb_type, fluid_rvoice_eventhandler_t *, int, int);
 
 void delete_fluid_rvoice_mixer(fluid_rvoice_mixer_t *);
+
+fluid_rvoice_mixer_state_t *fluid_rvoice_mixer_state_save(
+    fluid_rvoice_mixer_t *mixer, fluid_voice_t *voices[], int nvoice);
+int fluid_rvoice_mixer_state_restore(fluid_rvoice_mixer_t *mixer,
+                                     const fluid_rvoice_mixer_state_t *state,
+                                     fluid_voice_t *voices[], int nvoice);
+void fluid_rvoice_mixer_state_free(fluid_rvoice_mixer_state_t *state);
 
 void
 fluid_rvoice_mixer_set_reverb_full(const fluid_rvoice_mixer_t *mixer,

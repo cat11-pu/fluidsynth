@@ -233,6 +233,12 @@ struct _fluid_chorus_t
     modulator mod[MAX_CHORUS]; /* sinus/triangle modulator */
 };
 
+struct _fluid_chorus_state_t
+{
+    fluid_chorus_t chorus;
+    fluid_real_t *line;
+};
+
 /*-----------------------------------------------------------------------------
  Sets the frequency of sinus oscillator.
 
@@ -675,6 +681,103 @@ delete_fluid_chorus(fluid_chorus_t *chorus)
 
     FLUID_FREE(chorus->line);
     FLUID_FREE(chorus);
+}
+
+fluid_chorus_state_t *
+fluid_chorus_state_save(const fluid_chorus_t *chorus)
+{
+    fluid_chorus_state_t *state;
+
+    fluid_return_val_if_fail(chorus != NULL, NULL);
+
+    state = FLUID_NEW(fluid_chorus_state_t);
+
+    if(state == NULL)
+    {
+        return NULL;
+    }
+
+    FLUID_MEMCPY(&state->chorus, chorus, sizeof(*chorus));
+    state->chorus.line = NULL;
+    state->line = NULL;
+
+    if(chorus->size > 0)
+    {
+        size_t line_size = (size_t) chorus->size * sizeof(*state->line);
+
+        if(chorus->line == NULL)
+        {
+            FLUID_FREE(state);
+            return NULL;
+        }
+
+        state->line = FLUID_MALLOC(line_size);
+
+        if(state->line == NULL)
+        {
+            FLUID_FREE(state);
+            return NULL;
+        }
+
+        FLUID_MEMCPY(state->line, chorus->line, line_size);
+    }
+
+    return state;
+}
+
+int
+fluid_chorus_state_restore(fluid_chorus_t *chorus,
+                           const fluid_chorus_state_t *state)
+{
+    fluid_real_t *line = NULL;
+    size_t line_size;
+
+    fluid_return_val_if_fail(chorus != NULL, FLUID_FAILED);
+    fluid_return_val_if_fail(state != NULL, FLUID_FAILED);
+    fluid_return_val_if_fail(state->chorus.size >= 0, FLUID_FAILED);
+
+    line_size = (size_t) state->chorus.size * sizeof(*line);
+
+    if(state->chorus.size > 0)
+    {
+        fluid_return_val_if_fail(state->line != NULL, FLUID_FAILED);
+
+        if(chorus->size == state->chorus.size && chorus->line != NULL)
+        {
+            line = chorus->line;
+        }
+        else
+        {
+            line = FLUID_MALLOC(line_size);
+
+            if(line == NULL)
+            {
+                return FLUID_FAILED;
+            }
+        }
+
+        FLUID_MEMCPY(line, state->line, line_size);
+    }
+
+    if(line != chorus->line)
+    {
+        FLUID_FREE(chorus->line);
+    }
+
+    FLUID_MEMCPY(chorus, &state->chorus, sizeof(*chorus));
+    chorus->line = line;
+
+    return FLUID_OK;
+}
+
+void
+fluid_chorus_state_free(fluid_chorus_state_t *state)
+{
+    if(state != NULL)
+    {
+        FLUID_FREE(state->line);
+        FLUID_FREE(state);
+    }
 }
 
 /**

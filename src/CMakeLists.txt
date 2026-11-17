@@ -170,6 +170,8 @@ set ( libfluidsynth_SOURCES
     rvoice/fluid_rev_dattorro.cpp
     rvoice/fluid_rev_dattorro.h
     rvoice/fluid_rev_filters.h
+    rvoice/fluid_rev_state.cpp
+    rvoice/fluid_rev_state_codec.h
     synth/fluid_chan.c
     synth/fluid_chan.h
     synth/fluid_event.c
@@ -180,6 +182,7 @@ set ( libfluidsynth_SOURCES
     synth/fluid_mod.h
     synth/fluid_synth.c
     synth/fluid_synth.h
+    synth/fluid_synth_snapshot.c
     synth/fluid_synth_monopoly.c
     synth/fluid_synth_write_int.cpp
     synth/fluid_tuning.c

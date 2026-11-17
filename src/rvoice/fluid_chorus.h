@@ -28,6 +28,7 @@ extern "C" {
 #endif
 
 typedef struct _fluid_chorus_t fluid_chorus_t;
+typedef struct _fluid_chorus_state_t fluid_chorus_state_t;
 
 /* enum describing each chorus parameter */
 enum fluid_chorus_param
@@ -71,6 +72,11 @@ void fluid_chorus_set(fluid_chorus_t *chorus, int set, int nr, fluid_real_t leve
                       fluid_real_t speed, fluid_real_t depth_ms, int type);
 void
 fluid_chorus_samplerate_change(fluid_chorus_t *chorus, fluid_real_t sample_rate);
+
+fluid_chorus_state_t *fluid_chorus_state_save(const fluid_chorus_t *chorus);
+int fluid_chorus_state_restore(fluid_chorus_t *chorus,
+                               const fluid_chorus_state_t *state);
+void fluid_chorus_state_free(fluid_chorus_state_t *state);
 
 void fluid_chorus_processmix(fluid_chorus_t *chorus, const fluid_real_t *in,
                              fluid_real_t *left_out, fluid_real_t *right_out);
